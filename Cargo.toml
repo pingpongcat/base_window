@@ -1,0 +1,11 @@
+[package]
+name = "base_window"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rtrb = "0.3"
+baseview = { git = "https://github.com/pingpongcat/baseview.git", rev = "d36891998b2dadfe216319fdc9412ff35afbabad", feature = "opengl" }
+gl = "0.14.0"
