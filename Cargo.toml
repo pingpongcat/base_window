@@ -5,9 +5,12 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["opengl"]
+opengl = ["baseview/opengl"]
+
 [dependencies]
 rtrb = "0.3"
-baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "1d9806d5bd92275d0d8142d9c9c90198757b9b25", features = ["opengl"]}
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "1d9806d5bd92275d0d8142d9c9c90198757b9b25"}
 raw-window-handle = "0.4.2"
-gl = "0.14.0"
 glow = "0.13.1"
