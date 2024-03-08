@@ -33,7 +33,6 @@ impl OpenWindowExample {
             let gl =
                 glow::Context::from_loader_function(|s| context.get_proc_address(s) as *const _);
 
-            // Create a program
             let program = gl.create_program().expect("Cannot create program");
 
             let (vertex_shader_src, fragment_shader_src) = (
@@ -120,15 +119,11 @@ impl OpenWindowExample {
     }
 }
 
-// struct OpenWindowExample {
-//     rx: Consumer<Message>,
-// }
-
 impl WindowHandler for OpenWindowExample {
     fn on_frame(&mut self, window: &mut Window) {
         let context = window
             .gl_context()
-            .expect("Failed to get baseview gl context");
+            .expect("Failed to get baseview GL context");
 
         self.draw();
 
@@ -165,7 +160,7 @@ fn main() {
         title: "baseview".into(),
         size: baseview::Size::new(512.0, 512.0),
         scale: WindowScalePolicy::SystemScaleFactor,
-        //#[cfg(feature = "opengl")]
+        #[cfg(feature = "opengl")]
         gl_config: Some(Default::default()),
     };
 
