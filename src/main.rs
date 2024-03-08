@@ -1,13 +1,12 @@
-use std::ffi::CString;
 use std::time::Duration;
 
 use rtrb::{Consumer, RingBuffer};
 
-use gl::types::*;
+use glow::*;
 
 #[cfg(target_os = "macos")]
 use baseview::copy_to_clipboard;
-use baseview::{Event, EventStatus, MouseEvent, Window, WindowHandler, WindowScalePolicy};
+use baseview::{Event, EventStatus, Window, WindowHandler, WindowScalePolicy};
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -15,113 +14,169 @@ enum Message {
 }
 
 struct OpenWindowExample {
-    rx: Consumer<Message>,
-    program: GLuint,
-    vao: GLuint,
+    _rx: Consumer<Message>,
+    gl: Option<glow::Context>,      // Zmienione na Option
+    program: Option<NativeProgram>, // Zmienione na Option
+    vao: Option<NativeVertexArray>,
     is_gl_initialized: bool, // Add this field
 }
 
 impl OpenWindowExample {
-    fn init_gl(&mut self) {
+    fn init(&mut self, window: &Window) {
+        let context = window
+            .gl_context()
+            .expect("failed to get baseview gl context");
         unsafe {
-            // Shader source code
-            let vertex_shader_src = r#"
-                #version 330 core
-                layout(location = 0) in vec3 position;
-                void main() {
-                    gl_Position = vec4(position, 1.0);
-                }
-            "#;
+            context.make_current();
+        }
 
-            let fragment_shader_src = r#"
-                #version 330 core
-                out vec4 color;
-                void main() {
-                    color = vec4(1.0, 0.5, 0.2, 1.0);
-                }
-            "#;
+        unsafe {
+            self.gl = Some(glow::Context::from_loader_function(|s| {
+                context.get_proc_address(s) as *const _
+            }));
 
-            // Compile shaders
-            let vertex_shader = gl::CreateShader(gl::VERTEX_SHADER);
-            gl::ShaderSource(
+            // Create a program
+            let program = self
+                .gl
+                .as_ref()
+                .unwrap()
+                .create_program()
+                .expect("Cannot create program");
+            self.program = Some(program); // Store the program in your struct
+
+            let (vertex_shader_src, fragment_shader_src) = (
+                r#"const vec2 verts[3] = vec2[3](
+                vec2(0.5f, 1.0f),
+                vec2(0.0f, 0.0f),
+                vec2(1.0f, 0.0f)
+            );
+            out vec2 vert;
+            void main() {
+                vert = verts[gl_VertexID];
+                gl_Position = vec4(vert - 0.5, 0.0, 1.0);
+            }"#,
+                r#"precision mediump float;
+            in vec2 vert;
+            out vec4 color;
+            void main() {
+                color = vec4(vert, 0.5, 1.0);
+            }"#,
+            );
+
+            let shader_version = "#version 300 es";
+
+            let vertex_shader = self
+                .gl
+                .as_ref()
+                .unwrap()
+                .create_shader(glow::VERTEX_SHADER)
+                .unwrap();
+            self.gl.as_ref().unwrap().shader_source(
                 vertex_shader,
-                1,
-                &CString::new(vertex_shader_src).unwrap().as_ptr(),
-                std::ptr::null(),
+                &format!("{}\n{}", shader_version, vertex_shader_src),
             );
-            gl::CompileShader(vertex_shader);
+            self.gl.as_ref().unwrap().compile_shader(vertex_shader);
+            if !self
+                .gl
+                .as_ref()
+                .unwrap()
+                .get_shader_compile_status(vertex_shader)
+            {
+                panic!(
+                    "{}",
+                    self.gl.as_ref().unwrap().get_shader_info_log(vertex_shader)
+                );
+            }
 
-            let fragment_shader = gl::CreateShader(gl::FRAGMENT_SHADER);
-            gl::ShaderSource(
+            self.gl
+                .as_ref()
+                .unwrap()
+                .attach_shader(self.program.unwrap(), vertex_shader);
+
+            let fragment_shader = self
+                .gl
+                .as_ref()
+                .unwrap()
+                .create_shader(glow::FRAGMENT_SHADER)
+                .unwrap();
+            self.gl.as_ref().unwrap().shader_source(
                 fragment_shader,
-                1,
-                &CString::new(fragment_shader_src).unwrap().as_ptr(),
-                std::ptr::null(),
+                &format!("{}\n{}", shader_version, fragment_shader_src),
             );
-            gl::CompileShader(fragment_shader);
+            self.gl.as_ref().unwrap().compile_shader(fragment_shader);
+            self.gl.as_ref().unwrap().compile_shader(fragment_shader);
+            if !self
+                .gl
+                .as_ref()
+                .unwrap()
+                .get_shader_compile_status(fragment_shader)
+            {
+                panic!(
+                    "{}",
+                    self.gl
+                        .as_ref()
+                        .unwrap()
+                        .get_shader_info_log(fragment_shader)
+                );
+            }
 
-            // Link shaders into a program
-            self.program = gl::CreateProgram();
-            gl::AttachShader(self.program, vertex_shader);
-            gl::AttachShader(self.program, fragment_shader);
-            gl::LinkProgram(self.program);
+            self.gl
+                .as_ref()
+                .unwrap()
+                .attach_shader(self.program.unwrap(), fragment_shader);
 
-            // Clean up shaders as they're linked into the program now and no longer necessary
-            gl::DeleteShader(vertex_shader);
-            gl::DeleteShader(fragment_shader);
+            self.gl.as_ref().unwrap().link_program(program);
+            if !self.gl.as_ref().unwrap().get_program_link_status(program) {
+                panic!(
+                    "{}",
+                    self.gl.as_ref().unwrap().get_program_info_log(program)
+                );
+            }
 
-            // Vertex data for a triangle
-            let vertices: [GLfloat; 9] = [-0.5, -0.5, 0.0, 0.5, -0.5, 0.0, 0.0, 0.5, 0.0];
+            self.gl
+                .as_ref()
+                .unwrap()
+                .detach_shader(program, vertex_shader);
+            self.gl.as_ref().unwrap().delete_shader(vertex_shader);
 
-            // Generate and bind a Vertex Array Object (VAO)
-            gl::GenVertexArrays(1, &mut self.vao);
-            gl::BindVertexArray(self.vao);
+            self.gl
+                .as_ref()
+                .unwrap()
+                .detach_shader(program, fragment_shader);
+            self.gl.as_ref().unwrap().delete_shader(fragment_shader);
 
-            // Generate and bind a Vertex Buffer Object (VBO)
-            let mut vbo: GLuint = 0;
-            gl::GenBuffers(1, &mut vbo);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-            gl::BufferData(
-                gl::ARRAY_BUFFER,
-                (vertices.len() * std::mem::size_of::<GLfloat>()) as GLsizeiptr,
-                vertices.as_ptr() as *const _,
-                gl::STATIC_DRAW,
+
+            self.vao = Some(
+                self.gl
+                    .as_ref()
+                    .unwrap()
+                    .create_vertex_array()
+                    .expect("Cannot create vertex array"),
             );
-
-            // Vertex attribute pointer for the position
-            gl::VertexAttribPointer(
-                0,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                3 * std::mem::size_of::<GLfloat>() as GLsizei,
-                std::ptr::null(),
-            );
-            gl::EnableVertexAttribArray(0);
-
-            // Unbind the VBO and VAO
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-            gl::BindVertexArray(0);
+            self.gl
+                .as_ref()
+                .unwrap()
+                .bind_vertex_array(Some(self.vao.unwrap()));
         }
     }
 
     fn draw(&self) {
         unsafe {
             // Set the background color
-            gl::ClearColor(0.2, 0.3, 0.3, 1.0);
+            self.gl.as_ref().unwrap().clear_color(0.2, 0.3, 0.3, 1.0);
             // Clear the color buffer
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            self.gl.as_ref().unwrap().clear(glow::COLOR_BUFFER_BIT);
 
-            // Use the shader program
-            gl::UseProgram(self.program);
-            // Bind the Vertex Array Object (VAO)
-            gl::BindVertexArray(self.vao);
+            self.gl
+                .as_ref()
+                .unwrap()
+                .use_program(Some(self.program.unwrap()));
+            self.gl
+                .as_ref()
+                .unwrap()
+                .bind_vertex_array(Some(self.vao.unwrap()));
 
-            // Draw the triangle
-            gl::DrawArrays(gl::TRIANGLES, 0, 3);
-
-            // Unbind the VAO (not strictly necessary in this simple context, but good practice)
-            gl::BindVertexArray(0);
+            self.gl.as_ref().unwrap().draw_arrays(glow::TRIANGLES, 0, 3);
         }
     }
 }
@@ -131,9 +186,13 @@ impl OpenWindowExample {
 // }
 
 impl WindowHandler for OpenWindowExample {
-    fn on_frame(&mut self, _window: &mut Window) {
+    fn on_frame(&mut self, window: &mut Window) {
+        let context = window
+            .gl_context()
+            .expect("Failed to get baseview gl context");
+
         if !self.is_gl_initialized {
-            self.init_gl();
+            self.init(window);
             self.is_gl_initialized = true; // Set to true after initialization
         }
 
@@ -142,6 +201,10 @@ impl WindowHandler for OpenWindowExample {
         // while let Ok(message) = self.rx.pop() {
         //     println!("Message: {:?}", message);
         // }
+        unsafe {
+            context.make_current();
+            context.swap_buffers();
+        }
     }
 
     fn on_event(&mut self, _window: &mut Window, event: Event) -> EventStatus {
@@ -168,9 +231,8 @@ fn main() {
         title: "baseview".into(),
         size: baseview::Size::new(512.0, 512.0),
         scale: WindowScalePolicy::SystemScaleFactor,
-        #[cfg(feature = "opengl")]
-       // gl_config: Some(Default::default()),
-        gl_config: Some(baseview::GlConfig::default()),
+        //#[cfg(feature = "opengl")]
+        gl_config: Some(Default::default()),
     };
 
     let (mut tx, rx) = RingBuffer::new(128);
@@ -185,9 +247,10 @@ fn main() {
 
     //Window::open_blocking(window_open_options, |_| OpenWindowExample { rx });
     Window::open_blocking(window_open_options, move |_| OpenWindowExample {
-        rx,
-        program: 0, // Will be initialized in the OpenWindowExample::init_gl
-        vao: 0,     // Will be initialized in the OpenWindowExample::init_gl
+        _rx: rx,
+        gl: None,      // Teraz jest to Option
+        program: None, // Teraz jest to Option
+        vao: None,     // Teraz jest to Option
         is_gl_initialized: false,
     });
 }

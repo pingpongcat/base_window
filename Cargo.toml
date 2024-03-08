@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 rtrb = "0.3"
-baseview = { git = "https://github.com/pingpongcat/baseview.git", rev = "d36891998b2dadfe216319fdc9412ff35afbabad", feature = "opengl" }
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "1d9806d5bd92275d0d8142d9c9c90198757b9b25", features = ["opengl"]}
+raw-window-handle = "0.4.2"
 gl = "0.14.0"
+glow = "0.13.1"
