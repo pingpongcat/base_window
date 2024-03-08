@@ -15,14 +15,13 @@ enum Message {
 
 struct OpenWindowExample {
     _rx: Consumer<Message>,
-    gl: Option<glow::Context>,      // Zmienione na Option
-    program: Option<NativeProgram>, // Zmienione na Option
-    vao: Option<NativeVertexArray>,
-    is_gl_initialized: bool, // Add this field
+    gl: glow::Context,      // Zmienione na Option
+    program: NativeProgram, // Zmienione na Option
+    vao: NativeVertexArray,
 }
 
 impl OpenWindowExample {
-    fn init(&mut self, window: &Window) {
+    fn new(window: &Window, rx: Consumer<Message>) -> Result<Self, String> {
         let context = window
             .gl_context()
             .expect("failed to get baseview gl context");
@@ -31,18 +30,11 @@ impl OpenWindowExample {
         }
 
         unsafe {
-            self.gl = Some(glow::Context::from_loader_function(|s| {
-                context.get_proc_address(s) as *const _
-            }));
+            let gl =
+                glow::Context::from_loader_function(|s| context.get_proc_address(s) as *const _);
 
             // Create a program
-            let program = self
-                .gl
-                .as_ref()
-                .unwrap()
-                .create_program()
-                .expect("Cannot create program");
-            self.program = Some(program); // Store the program in your struct
+            let program = gl.create_program().expect("Cannot create program");
 
             let (vertex_shader_src, fragment_shader_src) = (
                 r#"const vec2 verts[3] = vec2[3](
@@ -65,118 +57,65 @@ impl OpenWindowExample {
 
             let shader_version = "#version 300 es";
 
-            let vertex_shader = self
-                .gl
-                .as_ref()
-                .unwrap()
-                .create_shader(glow::VERTEX_SHADER)
-                .unwrap();
-            self.gl.as_ref().unwrap().shader_source(
+            let vertex_shader = gl.create_shader(glow::VERTEX_SHADER).unwrap();
+            gl.shader_source(
                 vertex_shader,
                 &format!("{}\n{}", shader_version, vertex_shader_src),
             );
-            self.gl.as_ref().unwrap().compile_shader(vertex_shader);
-            if !self
-                .gl
-                .as_ref()
-                .unwrap()
-                .get_shader_compile_status(vertex_shader)
-            {
-                panic!(
-                    "{}",
-                    self.gl.as_ref().unwrap().get_shader_info_log(vertex_shader)
-                );
+            gl.compile_shader(vertex_shader);
+            if !gl.get_shader_compile_status(vertex_shader) {
+                panic!("{}", gl.get_shader_info_log(vertex_shader));
             }
 
-            self.gl
-                .as_ref()
-                .unwrap()
-                .attach_shader(self.program.unwrap(), vertex_shader);
+            gl.attach_shader(program, vertex_shader);
 
-            let fragment_shader = self
-                .gl
-                .as_ref()
-                .unwrap()
-                .create_shader(glow::FRAGMENT_SHADER)
-                .unwrap();
-            self.gl.as_ref().unwrap().shader_source(
+            let fragment_shader = gl.create_shader(glow::FRAGMENT_SHADER).unwrap();
+            gl.shader_source(
                 fragment_shader,
                 &format!("{}\n{}", shader_version, fragment_shader_src),
             );
-            self.gl.as_ref().unwrap().compile_shader(fragment_shader);
-            self.gl.as_ref().unwrap().compile_shader(fragment_shader);
-            if !self
-                .gl
-                .as_ref()
-                .unwrap()
-                .get_shader_compile_status(fragment_shader)
-            {
-                panic!(
-                    "{}",
-                    self.gl
-                        .as_ref()
-                        .unwrap()
-                        .get_shader_info_log(fragment_shader)
-                );
+            gl.compile_shader(fragment_shader);
+            gl.compile_shader(fragment_shader);
+            if !gl.get_shader_compile_status(fragment_shader) {
+                panic!("{}", gl.get_shader_info_log(fragment_shader));
             }
 
-            self.gl
-                .as_ref()
-                .unwrap()
-                .attach_shader(self.program.unwrap(), fragment_shader);
+            gl.attach_shader(program, fragment_shader);
 
-            self.gl.as_ref().unwrap().link_program(program);
-            if !self.gl.as_ref().unwrap().get_program_link_status(program) {
-                panic!(
-                    "{}",
-                    self.gl.as_ref().unwrap().get_program_info_log(program)
-                );
+            gl.link_program(program);
+            if !gl.get_program_link_status(program) {
+                panic!("{}", gl.get_program_info_log(program));
             }
 
-            self.gl
-                .as_ref()
-                .unwrap()
-                .detach_shader(program, vertex_shader);
-            self.gl.as_ref().unwrap().delete_shader(vertex_shader);
+            gl.detach_shader(program, vertex_shader);
+            gl.delete_shader(vertex_shader);
 
-            self.gl
-                .as_ref()
-                .unwrap()
-                .detach_shader(program, fragment_shader);
-            self.gl.as_ref().unwrap().delete_shader(fragment_shader);
+            gl.detach_shader(program, fragment_shader);
+            gl.delete_shader(fragment_shader);
 
+            let vao = gl
+                .create_vertex_array()
+                .expect("Cannot create vertex array");
+            gl.bind_vertex_array(Some(vao));
 
-            self.vao = Some(
-                self.gl
-                    .as_ref()
-                    .unwrap()
-                    .create_vertex_array()
-                    .expect("Cannot create vertex array"),
-            );
-            self.gl
-                .as_ref()
-                .unwrap()
-                .bind_vertex_array(Some(self.vao.unwrap()));
+            Ok(OpenWindowExample {
+                _rx: rx,
+                gl: gl,
+                program: program,
+                vao: vao,
+            })
         }
     }
 
     fn draw(&self) {
         unsafe {
-            // Set the background color
-            self.gl.as_ref().unwrap().clear_color(0.2, 0.3, 0.3, 1.0);
-            // Clear the color buffer
-            self.gl.as_ref().unwrap().clear(glow::COLOR_BUFFER_BIT);
+            self.gl.clear_color(0.2, 0.3, 0.3, 1.0);
+            self.gl.clear(glow::COLOR_BUFFER_BIT);
 
-            self.gl
-                .as_ref()
-                .unwrap()
-                .use_program(Some(self.program.unwrap()));
-            self.gl
-                .as_ref()
-                .unwrap()
-                .bind_vertex_array(Some(self.vao.unwrap()));
+            self.gl.use_program(Some(self.program));
+            self.gl.bind_vertex_array(Some(self.vao));
 
-            self.gl.as_ref().unwrap().draw_arrays(glow::TRIANGLES, 0, 3);
+            self.gl.draw_arrays(glow::TRIANGLES, 0, 3);
         }
     }
 }
@@ -190,11 +129,6 @@ impl WindowHandler for OpenWindowExample {
         let context = window
             .gl_context()
             .expect("Failed to get baseview gl context");
-
-        if !self.is_gl_initialized {
-            self.init(window);
-            self.is_gl_initialized = true; // Set to true after initialization
-        }
 
         self.draw();
 
@@ -245,12 +179,7 @@ fn main() {
         }
     });
 
-    //Window::open_blocking(window_open_options, |_| OpenWindowExample { rx });
-    Window::open_blocking(window_open_options, move |_| OpenWindowExample {
-        _rx: rx,
-        gl: None,      // Teraz jest to Option
-        program: None, // Teraz jest to Option
-        vao: None,     // Teraz jest to Option
-        is_gl_initialized: false,
+    Window::open_blocking(window_open_options, move |window| {
+        OpenWindowExample::new(&window, rx).expect("Failed to initialize OpenWindowExample")
     });
 }
