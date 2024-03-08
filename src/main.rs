@@ -14,9 +14,9 @@ enum Message {
 }
 
 struct OpenWindowExample {
-    _rx: Consumer<Message>,
-    gl: glow::Context,      // Zmienione na Option
-    program: NativeProgram, // Zmienione na Option
+    rx: Consumer<Message>,
+    gl: glow::Context,
+    program: NativeProgram,
     vao: NativeVertexArray,
 }
 
@@ -99,10 +99,10 @@ impl OpenWindowExample {
             gl.bind_vertex_array(Some(vao));
 
             Ok(OpenWindowExample {
-                _rx: rx,
-                gl: gl,
-                program: program,
-                vao: vao,
+                rx,
+                gl,
+                program,
+                vao,
             })
         }
     }
@@ -132,9 +132,9 @@ impl WindowHandler for OpenWindowExample {
 
         self.draw();
 
-        // while let Ok(message) = self.rx.pop() {
-        //     println!("Message: {:?}", message);
-        // }
+        while let Ok(message) = self.rx.pop() {
+            println!("Message: {:?}", message);
+        }
         unsafe {
             context.make_current();
             context.swap_buffers();
